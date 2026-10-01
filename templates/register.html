@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Vault - LockScribe</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+
+<body class="auth-body">
+    <div class="auth-card">
+        <div class="auth-header">
+            <div class="auth-logo">🔒 LockScribe</div>
+            <h2>Create Your Private Vault</h2>
+            <p>End-to-end encrypted personal workspace. Only you hold the key.</p>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        {% for category, message in messages %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+        {% endfor %}
+        {% endif %}
+        {% endwith %}
+
+        <form action="/register" method="POST" class="auth-form">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" required placeholder="Choose a username">
+            </div>
+
+            <div class="form-group">
+                <label for="email">Email Address</label>
+                <input type="email" id="email" name="email" required placeholder="name@example.com">
+            </div>
+
+            <div class="form-group">
+                <label for="password">Master Password</label>
+                <input type="password" id="password" name="password" required minlength="6"
+                    placeholder="Minimum 6 characters">
+                <small class="field-hint">Never forget this password. It encrypts your notes locally.</small>
+            </div>
+
+            <button type="submit" class="btn btn-primary">Initialize Vault</button>
+        </form>
+
+        <div class="auth-footer">
+            <p>Already have a vault? <a href="/login">Log In</a></p>
+        </div>
+    </div>
+</body>
+
+</html>

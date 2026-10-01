@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LockScribe - Zero Knowledge Personal Vault</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+
+<body class="app-body">
+    <div class="vault-container">
+
+        <!-- PANE 1: NAVIGATION SIDEBAR -->
+        <aside class="vault-sidebar">
+            <div class="sidebar-top">
+                <div class="brand">
+                    <i class="fa-solid fa-vault"></i>
+                    <span>LockScribe</span>
+                </div>
+                <div class="vault-indicator">
+                    <span class="status-dot"></span> End-to-End Encrypted
+                </div>
+            </div>
+
+            <nav class="sidebar-menu">
+                <button class="menu-item active" data-filter="all">
+                    <i class="fa-regular fa-note-sticky"></i>
+                    <span>All Notes</span>
+                    <span class="badge" id="countAll">0</span>
+                </button>
+                <button class="menu-item" data-filter="favorites">
+                    <i class="fa-regular fa-star"></i>
+                    <span>Favorites</span>
+                    <span class="badge" id="countFav">0</span>
+                </button>
+                <button class="menu-item" data-filter="reminders">
+                    <i class="fa-regular fa-bell"></i>
+                    <span>Reminders</span>
+                    <span class="badge" id="countReminders">0</span>
+                </button>
+                <button class="menu-item" data-filter="archive">
+                    <i class="fa-solid fa-box-archive"></i>
+                    <span>Archive</span>
+                </button>
+                <button class="menu-item" data-filter="trash">
+                    <i class="fa-regular fa-trash-can"></i>
+                    <span>Trash</span>
+                </button>
+            </nav>
+
+            <div class="sidebar-bottom">
+                <div class="user-profile">
+                    <i class="fa-regular fa-circle-user avatar-icon"></i>
+                    <div class="user-meta">
+                        <span class="username">{{ username }}</span>
+                        <span class="user-sub">Vault Owner</span>
+                    </div>
+                </div>
+                <a href="/logout" class="btn-logout" id="logoutBtn" title="Lock & Logout">
+                    <i class="fa-solid fa-arrow-right-from-bracket"></i>
+                </a>
+            </div>
+        </aside>
+
+        <!-- PANE 2: NOTES LIST COLUMN -->
+        <section class="notes-column">
+            <div class="column-header">
+                <div class="search-box">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                    <input type="text" id="searchInput" placeholder="Search decrypted notes...">
+                </div>
+                <button id="btnCreateNote" class="btn-new-note" title="New Note">
+                    <i class="fa-solid fa-plus"></i>
+                </button>
+            </div>
+
+            <div class="notes-feed" id="notesFeed">
+                <!-- Dynamically generated note preview cards -->
+                <div class="empty-state" id="feedLoading">Loading secure vault...</div>
+            </div>
+        </section>
+
+        <!-- PANE 3: RICH TEXT EDITOR COLUMN -->
+        <main class="editor-column" id="editorContainer">
+            <div class="editor-header">
+                <div class="toolbar">
+                    <button type="button" class="tool-btn" data-command="bold" title="Bold"><i
+                            class="fa-solid fa-bold"></i></button>
+                    <button type="button" class="tool-btn" data-command="italic" title="Italic"><i
+                            class="fa-solid fa-italic"></i></button>
+                    <button type="button" class="tool-btn" data-command="underline" title="Underline"><i
+                            class="fa-solid fa-underline"></i></button>
+                    <button type="button" class="tool-btn" data-command="strikeThrough" title="Strikethrough"><i
+                            class="fa-solid fa-strikethrough"></i></button>
+                    <span class="tool-divider"></span>
+                    <button type="button" class="tool-btn" data-command="insertUnorderedList" title="Bullet List"><i
+                            class="fa-solid fa-list-ul"></i></button>
+                    <button type="button" class="tool-btn" data-command="insertOrderedList" title="Numbered List"><i
+                            class="fa-solid fa-list-ol"></i></button>
+                </div>
+
+                <div class="editor-actions">
+                    <span class="sync-status" id="syncStatus">All changes encrypted</span>
+                    <button class="action-icon-btn" id="btnReminderToggle" title="Reminder"><i
+                            class="fa-regular fa-bell"></i></button>
+                    <button class="action-icon-btn" id="btnToggleFav" title="Favorite"><i
+                            class="fa-regular fa-star"></i></button>
+                    <button class="action-icon-btn text-danger" id="btnDeleteNote" title="Move to Trash"><i
+                            class="fa-regular fa-trash-can"></i></button>
+                </div>
+            </div>
+
+            <div class="editor-workspace">
+                <input type="text" id="editorTitle" class="editor-title" placeholder="Untitled Note" autocomplete="off">
+                <div class="editor-meta-bar">
+                    <span id="noteTimestamp">Modified: Just now</span>
+                    <span id="charCount">0 characters</span>
+                </div>
+                <div id="editorBody" class="editor-body" contenteditable="true" spellcheck="true"
+                    placeholder="Start typing your secure notes here..."></div>
+            </div>
+        </main>
+
+    </div>
+
+    <!-- Reminder Modal -->
+    <div class="modal-overlay" id="reminderModal" style="display:none;">
+        <div class="modal-box reminder-modal-box">
+            <div class="modal-header">
+                <div class="modal-header-title">
+                    <i class="fa-regular fa-bell"></i>
+                    <h3>Set Note Reminder</h3>
+                </div>
+                <button type="button" class="modal-close-icon" id="btnCloseReminder" title="Close">&times;</button>
+            </div>
+            <p class="modal-hint">Choose when you want to be alerted and set a custom reminder message.</p>
+
+            <div class="modal-form-group">
+                <label for="reminderDateTime">Reminder Date & Time</label>
+                <input type="datetime-local" id="reminderDateTime" class="modal-input" required>
+            </div>
+
+            <div class="modal-form-group">
+                <label for="reminderCustomMsg">Alert Message</label>
+                <input type="text" id="reminderCustomMsg" class="modal-input" placeholder="e.g., Review project notes" maxlength="255">
+            </div>
+
+            <div class="reminder-modal-actions">
+                <button type="button" id="btnClearReminder" class="btn-action btn-danger-outline">
+                    <i class="fa-regular fa-bell-slash"></i> Clear Reminder
+                </button>
+                <div class="modal-actions-right">
+                    <button type="button" id="btnCancelReminder" class="btn-action btn-secondary">Cancel</button>
+                    <button type="button" id="btnSaveReminder" class="btn-action btn-primary">
+                        <i class="fa-solid fa-check"></i> Save Reminder
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Passphrase Prompt Modal (in case session re-verification is needed) -->
+    <div class="modal-overlay" id="passphraseModal" style="display:none;">
+        <div class="modal-box">
+            <h3>Enter Vault Passphrase</h3>
+            <p>Your notes are client-side encrypted. Please re-enter your password to decrypt your vault.</p>
+            <input type="password" id="modalPasswordInput" placeholder="Master Password">
+            <button id="modalSubmitBtn" class="btn btn-primary">Unlock Notes</button>
+        </div>
+    </div>
+
+    <!-- WhatsApp-Style Notification Toast Container -->
+    <div id="whatsappToastContainer" class="whatsapp-toast-container"></div>
+
+    <script src="/static/js/crypto.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+
+</html>

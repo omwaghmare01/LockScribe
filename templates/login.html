@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - LockScribe Vault</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+
+<body class="auth-body">
+    <div class="auth-card">
+        <div class="auth-header">
+            <div class="auth-logo">🔒 LockScribe</div>
+            <h2>Welcome Back</h2>
+            <p>Enter your credentials to unlock your encrypted vault.</p>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        {% for category, message in messages %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+        {% endfor %}
+        {% endif %}
+        {% endwith %}
+
+        <form action="/login" method="POST" class="auth-form" id="loginForm">
+            <div class="form-group">
+                <label for="identifier">Username or Email</label>
+                <input type="text" id="identifier" name="identifier" required autocomplete="username"
+                    placeholder="name@example.com">
+            </div>
+
+            <div class="form-group">
+                <label for="password">Master Password</label>
+                <input type="password" id="password" name="password" required autocomplete="current-password"
+                    placeholder="••••••••••••">
+            </div>
+
+            <button type="submit" class="btn btn-primary">Unlock Vault</button>
+        </form>
+
+        <div class="auth-footer">
+            <p>Don't have a vault yet? <a href="/register">Create Account</a></p>
+        </div>
+    </div>
+
+    <script>
+        // Form submit hote waqt password ko session storage me temporarily save karte hain 
+        // taaki index page par client-side AES decryption key derive ki ja sake
+        document.getElementById('loginForm').addEventListener('submit', () => {
+            const pwd = document.getElementById('password').value;
+            sessionStorage.setItem('vault_passphrase', pwd);
+        });
+    </script>
+</body>
+
+</html>
