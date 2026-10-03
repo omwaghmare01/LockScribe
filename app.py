@@ -9,7 +9,13 @@ app = Flask(__name__)
 
 # Security configurations
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'lockscribe-dev-secret-key-change-in-production')
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///lockscribe.db'
+
+# Dynamic Database URI (Render PostgreSQL support with SQLite fallback)
+database_url = os.environ.get('DATABASE_URL', 'sqlite:///lockscribe.db')
+if database_url.startswith("postgres://"):
+    database_url = database_url.replace("postgres://", "postgresql://", 1)
+
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
@@ -72,10 +78,13 @@ class Note(db.Model):
             'updated_at': self.updated_at.strftime('%d %b %Y, %H:%M')
         }
 
-
 @login_manager.user_loader
 def load_user(user_id):
     return db.session.get(User, int(user_id))
+
+# Auto-create tables for both Gunicorn and Local development
+with app.app_context():
+    db.create_all()
 
 # ----------------- Frontend Page Routes -----------------
 
@@ -198,7 +207,6 @@ def api_notes():
 @app.route('/api/notes/<int:note_id>', methods=['GET', 'PUT', 'DELETE'])
 @login_required
 def api_note_detail(note_id):
-    # Strict isolation: ensure the note belongs to the logged-in user
     note = Note.query.filter_by(id=note_id, user_id=current_user.id).first()
     if not note:
         return jsonify({'error': 'Note not found or unauthorized access'}), 404
@@ -240,13 +248,10 @@ def api_note_detail(note_id):
         return jsonify(note.to_dict())
 
     if request.method == 'DELETE':
-        # Hard delete (permanent remove)
         db.session.delete(note)
         db.session.commit()
         return jsonify({'message': 'Note permanently deleted', 'id': note_id})
 
 
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
     app.run(debug=True, port=5000)
