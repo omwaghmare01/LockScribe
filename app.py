@@ -1,9 +1,12 @@
 import os
+import json
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
+from apscheduler.schedulers.background import BackgroundScheduler
+from pywebpush import webpush, WebPushException
 
 app = Flask(__name__)
 
@@ -25,6 +28,11 @@ login_manager.login_view = 'login'
 login_manager.login_message = "Please log in to access your LockScribe Vault."
 login_manager.login_message_category = "info"
 
+# Web Push VAPID Configurations
+VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY", "")
+VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "")
+VAPID_CLAIMS = {"sub": "mailto:admin@lockscribe.com"}
+
 # ----------------- Database Models -----------------
 
 class User(UserMixin, db.Model):
@@ -35,8 +43,9 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(256), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    # 1-to-many relationship: User has many notes
+    # Relationships
     notes = db.relationship('Note', backref='author', lazy=True, cascade="all, delete-orphan")
+    push_subscriptions = db.relationship('PushSubscription', backref='user', lazy=True, cascade="all, delete-orphan")
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -78,13 +87,60 @@ class Note(db.Model):
             'updated_at': self.updated_at.strftime('%d %b %Y, %H:%M')
         }
 
+
+class PushSubscription(db.Model):
+    __tablename__ = 'push_subscriptions'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    subscription_info = db.Column(db.Text, nullable=False)
+
+
 @login_manager.user_loader
 def load_user(user_id):
     return db.session.get(User, int(user_id))
 
-# Auto-create tables for both Gunicorn and Local development
+# Auto-create tables for both Gunicorn (Render) and local environments
 with app.app_context():
     db.create_all()
+
+# ----------------- Background Reminder Worker -----------------
+
+def check_reminders():
+    with app.app_context():
+        now = datetime.utcnow()
+        due_notes = Note.query.filter(
+            Note.reminder_at.isnot(None),
+            Note.reminder_at <= now,
+            Note.is_trashed == False
+        ).all()
+
+        for note in due_notes:
+            subs = PushSubscription.query.filter_by(user_id=note.user_id).all()
+            for sub in subs:
+                try:
+                    webpush(
+                        subscription_info=json.loads(sub.subscription_info),
+                        data=json.dumps({
+                            "title": "LockScribe Reminder",
+                            "body": note.reminder_msg or "Reminder alert from your encrypted note."
+                        }),
+                        vapid_private_key=VAPID_PRIVATE_KEY,
+                        vapid_claims=VAPID_CLAIMS
+                    )
+                except WebPushException as ex:
+                    # Stale subscription endpoint removal
+                    if ex.response and ex.response.status_code in [404, 410]:
+                        db.session.delete(sub)
+                except Exception:
+                    pass
+
+            note.reminder_at = None
+            db.session.commit()
+
+# APScheduler init (checks database every 60 seconds)
+scheduler = BackgroundScheduler()
+scheduler.add_job(func=check_reminders, trigger="interval", seconds=60)
+scheduler.start()
 
 # ----------------- Frontend Page Routes -----------------
 
@@ -158,6 +214,28 @@ def logout():
 
 # ----------------- Secure REST API Endpoints -----------------
 
+@app.route('/api/vapid-key', methods=['GET'])
+@login_required
+def get_vapid_key():
+    return jsonify({'publicKey': VAPID_PUBLIC_KEY})
+
+
+@app.route('/api/subscribe', methods=['POST'])
+@login_required
+def subscribe():
+    sub_data = request.get_json()
+    if not sub_data:
+        return jsonify({'error': 'Invalid payload'}), 400
+
+    sub_str = json.dumps(sub_data)
+    exists = PushSubscription.query.filter_by(user_id=current_user.id, subscription_info=sub_str).first()
+    if not exists:
+        db.session.add(PushSubscription(user_id=current_user.id, subscription_info=sub_str))
+        db.session.commit()
+
+    return jsonify({'status': 'subscribed'}), 201
+
+
 @app.route('/api/notes', methods=['GET', 'POST'])
 @login_required
 def api_notes():
@@ -174,7 +252,6 @@ def api_notes():
         elif category == 'trash':
             query = query.filter_by(is_trashed=True)
         else:
-            # Default 'all': non-trashed, non-archived
             query = query.filter_by(is_trashed=False, is_archived=False)
 
         notes = query.order_by(Note.updated_at.desc()).all()

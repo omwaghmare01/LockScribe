@@ -420,7 +420,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                 const updated = await res.json();
                 note.reminder_at = updated.reminder_at;
                 note.reminder_msg = updated.reminder_msg || "";
-                
+
                 remindersCache.set(note.id, note);
                 triggeredReminders.delete(note.id);
 
@@ -732,7 +732,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         const countReminders = document.getElementById("countReminders");
         if (countAll) countAll.textContent = notes.length;
         if (countFav) countFav.textContent = notes.filter(n => n.is_favorite).length;
-        
+
         let remCount = 0;
         const activeIds = new Set();
         notes.forEach(n => {
@@ -748,4 +748,39 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (!str) return "";
         return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
+    async function setupWebPush() {
+        if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+        try {
+            const reg = await navigator.serviceWorker.register('/static/sw.js');
+            const permission = await Notification.requestPermission();
+            if (permission !== 'granted') return;
+
+            const res = await fetch('/api/vapid-key');
+            const { publicKey } = await res.json();
+            if (!publicKey) return;
+
+            let sub = await reg.pushManager.getSubscription();
+            if (!sub) {
+                const padding = '='.repeat((4 - publicKey.length % 4) % 4);
+                const base64 = (publicKey + padding).replace(/\-/g, '+').replace(/_/g, '/');
+                const rawData = window.atob(base64);
+                const keyArray = Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
+
+                sub = await reg.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: keyArray
+                });
+            }
+
+            await fetch('/api/subscribe', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(sub)
+            });
+        } catch (err) {
+            console.error("Push registration error:", err);
+        }
+    }
+
+    window.addEventListener('DOMContentLoaded', setupWebPush);
 });
